@@ -1,5 +1,5 @@
 /**
- * 《星際穿梭：炫彩避障飛機》- 初始防當機終極版
+ * 《星際穿梭：炫彩避障飛機》- 靈魂對調終極修復版
  * 操控：Google MediaPipe AI 手勢辨識
  */
 
@@ -43,25 +43,19 @@ async function setup() {
 
   player = new Player();
   
-  // 初始化 Retro Wave 背景線條
   for (let i = 0; i < 12; i++) {
-    bgLines.push({
-      y: i * (height / 10),
-      speed: 3
-    });
+    bgLines.push({ y: i * (height / 10), speed: 3 });
   }
+
+  // 背景獨立非同步偵測，絕不卡死主畫面
+  setInterval(getHandTracking, 40);
 }
 
 function draw() {
-  // 3. 隔空非同步手勢追蹤（加上安全防護，只有準備好才偵測）
-  if (isModelReady) {
-    getHandTracking();
-  }
-
-  // 4. 基本粉紫背景
+  // 基本粉紫背景
   background('#e7c6ff');
 
-  // 5. 繪製「照鏡子模式」的攝影機影像 (置中放大至寬高 60%)
+  // 鏡像置中渲染攝影機
   push();
   translate(width / 2, height / 2); 
   scale(-1, 1);                     
@@ -71,7 +65,7 @@ function draw() {
 
   imageMode(CORNER);
   
-  // 6. 遊戲狀態機
+  // 遊戲狀態機
   if (gameState === 'START') { 
     drawStartScreen();
     checkStartTouch();
@@ -82,7 +76,7 @@ function draw() {
     checkRestart();
   }
 
-  // 7. 繪製 UI 計分板
+  // 繪製 UI 計分板
   drawUI(); 
 }
 
@@ -94,11 +88,10 @@ function drawStartScreen() {
   
   fill(255, 255, 0);
   textSize(28);
-  // 🔒 安全鎖：確保 hands 不是 null 且長度大於 0
   if (hands && hands.length > 0) {
-    text("👍 食指已偵測到！\n飛機即將啟動！", width / 2, height / 2);
+    text("👍 偵測到食指了！\n請揮動手指控制左側飛機！", width / 2, height / 2);
   } else {
-    text("👋 請舉起食指\n啟動飛機！", width / 2, height / 2);
+    text("👋 請在鏡頭中央舉起食指\n即可啟動飛機！", width / 2, height / 2);
   }
 }
 
@@ -106,7 +99,7 @@ function drawStartScreen() {
 function checkStartTouch() {
   if (hands && hands.length > 0) {
     let coords = getFingertipCoords();
-    if (coords) { // 🔒 確保真的拿到座標才啟動，防止 null 崩潰
+    if (coords) {
       player.initPosition(coords.x, coords.y);
       gameState = 'PLAY';
     }
@@ -125,28 +118,23 @@ async function getHandTracking() {
   if (!detector || !video.elt || video.elt.readyState < 2) return;
   try {
     let result = await detector.estimateHands(video.elt);
-    if (result) {
-      hands = result; // 只有成功拿到數據才更新
-    }
-  } catch(e) {
-    // 即使辨識失敗也默默跳過，不讓主程式崩潰
-  }
+    if (result) hands = result;
+  } catch (e) {}
 }
 
 // ✈️ 關鍵：座標映射函式 (絕對同向操控)
 function getFingertipCoords() {
-  // 🔒 終極安全鎖：層層檢查，確保陣列與節點完全存在
   if (hands && hands.length > 0 && hands[0] && hands[0].keypoints && hands[0].keypoints[8]) {
     let rawX = hands[0].keypoints[8].x; 
     let rawY = hands[0].keypoints[8].y;
 
-    // 🛠️ 配合 60% 中央視訊影像的黑邊範圍進行精準對齊
+    // 配合 60% 中央視訊影像的黑邊範圍進行精準對齊
     let videoDisplayWidth = width * 0.6;
     let videoDisplayHeight = height * 0.6;
     let offsetX = (width - videoDisplayWidth) / 2;
     let offsetY = (height - videoDisplayHeight) / 2;
 
-    // 鏡像對調公式
+    // 真正的鏡像換算：手往哪，飛機往哪
     let targetX = map(video.width - rawX, 0, video.width, offsetX, offsetX + videoDisplayWidth);
     let targetY = map(rawY, 0, video.height, offsetY, offsetY + videoDisplayHeight);
     
@@ -165,13 +153,14 @@ function updateGame() {
   // 難度與生成
   handleDifficulty();
 
-  // 障礙物 (隕石) 處理：由右向左飛
+  // 🔴 障礙物邏輯：從最右側出生、往左飛，跟隨手指的是飛機，不是它！
   for (let i = obstacles.length - 1; i >= 0; i--) {
     obstacles[i].update();
     obstacles[i].display();
 
+    // 檢查跟飛機的距離
     let d = dist(player.x, player.y, obstacles[i].x, obstacles[i].y);
-    if (d < 15 + obstacles[i].r) {
+    if (d < 20 + obstacles[i].r) {
       shieldHP -= 25;
       obstacles.splice(i, 1);
       if (shieldHP <= 0) { 
@@ -184,12 +173,12 @@ function updateGame() {
     if (obstacles[i].x < -100) obstacles.splice(i, 1);
   }
 
-  // 加分道具 (星塵) 處理
+  // 🟡 加分星星邏輯
   for (let i = stars.length - 1; i >= 0; i--) {
     stars[i].update();
     stars[i].display();
     let d = dist(player.x, player.y, stars[i].x, stars[i].y);
-    if (d < 15 + stars[i].r) {
+    if (d < 20 + stars[i].r) {
       distance += 50;
       shieldHP = min(shieldHP + 10, 100);
       stars.splice(i, 1);
@@ -202,7 +191,7 @@ function updateGame() {
 }
 
 function drawRetroGrid() {
-  stroke(0, 100, 255, 60);
+  stroke(0, 100, 255, 40);
   strokeWeight(2);
   for (let lineObj of bgLines) {
     line(0, lineObj.y, width, lineObj.y);
@@ -212,15 +201,18 @@ function drawRetroGrid() {
 }
 
 function handleDifficulty() {
-  let speed = 4, freq = 40;
-  if (currentLevel === 1) { speed = 4; freq = 45; }
-  else if (currentLevel === 2) { speed = 6; freq = 40; }
-  else if (currentLevel === 3) { speed = 8; freq = 35; }
-  else if (currentLevel === 4) { speed = 11; freq = 20; }
-  else if (currentLevel === 5) { speed = 14; freq = 15; }
-
-  if (frameCount % freq === 0) obstacles.push(new Obstacle(speed));
-  if (random(1) < (currentLevel === 5 ? 0.05 : 0.02)) stars.push(new Star(speed * 0.8));
+  let speed = 5, freq = 40;
+  if (currentLevel === 1) { speed = 5; freq = 45; }
+  else if (currentLevel === 2) { speed = 7; freq = 40; }
+  else if (currentLevel === 3) { speed = 9; freq = 35; }
+  
+  // 🔒 修正：障礙物一律從「畫面右側邊緣外 (width + 50)」出生，不准出生在手指上！
+  if (frameCount % freq === 0) {
+    obstacles.push(new Obstacle(speed));
+  }
+  if (random(1) < 0.02) {
+    stars.push(new Star(speed * 0.8));
+  }
 }
 
 function drawUI() {
@@ -241,10 +233,10 @@ function drawUI() {
   textSize(12);
   if (hands && hands.length > 0) {
     fill(0, 255, 0);
-    text("✋ 食指偵測中 (AI Active)", 30, 115);
+    text("✋ AI 連線成功 (飛機準備就緒)", 30, 115);
   } else if (!isModelReady) {
     fill(255, 100, 100);
-    text("⌛ Google AI 引擎載入中...", 30, 115);
+    text("⌛ Google AI 大腦加載中...", 30, 115);
   } else {
     fill(255, 255, 255);
     text("👋 請舉手以偵測...", 30, 115);
@@ -260,12 +252,12 @@ function drawGameOver() {
   text("💥 GAME OVER 💥", width / 2, height / 2);
   fill(255);
   textSize(20);
-  text("舉起食指重新開始", width / 2, height / 2 + 50);
+  text("收開手掌或再次舉手重新開始", width / 2, height / 2 + 50);
 }
 
 class Player {
   constructor() {
-    this.x = width / 2;
+    this.x = 100; // 飛機初始乖乖留在左邊
     this.y = height / 2;
     this.history = [];
   }
@@ -276,9 +268,10 @@ class Player {
   }
   update() {
     let coords = getFingertipCoords();
-    if (coords) { // 🔒 只有真正拿到手指位置才更新座標，絕對不吃空值！
-      this.x = lerp(this.x, constrain(coords.x, 0, width), 0.4);
-      this.y = lerp(this.y, constrain(coords.y, 0, height), 0.4);
+    if (coords) {
+      // 讓小飛機極度絲滑地跟隨指尖
+      this.x = lerp(this.x, constrain(coords.x, 20, width - 20), 0.35);
+      this.y = lerp(this.y, constrain(coords.y, 20, height - 20), 0.35);
     }
 
     this.history.push({x: this.x, y: this.y});
@@ -291,7 +284,7 @@ class Player {
     for (let i = 0; i < this.history.length; i++) {
       let alpha = map(i, 0, this.history.length, 0, 150);
       stroke(0, 200, 255, alpha);
-      vertex(this.history[i].x - (this.history.length - i) * 8, this.history[i].y); 
+      vertex(this.history[i].x - (this.history.length - i) * 6, this.history[i].y); 
     }
     endShape();
 
@@ -309,16 +302,14 @@ class Player {
 
 class Obstacle {
   constructor(speed) {
-    this.x = width + 50; 
-    this.y = random(30, height - 30);
-    this.r = (currentLevel >= 2) ? random(15, 35) : 20;
+    // 🔒 強制出生在螢幕最右側邊緣外！絕對不是在臉上！
+    this.x = width + random(50, 150); 
+    this.y = random(50, height - 50);
+    this.r = random(15, 30);
     this.speed = speed;
-    this.drift = (currentLevel >= 3) ? random(-1.5, 1.5) : 0;
   }
   update() {
     this.x -= this.speed; 
-    this.y += this.drift;
-    if (this.y < this.r || this.y > height - this.r) this.drift *= -1;
   }
   display() {
     stroke(255, 100, 0);
@@ -330,14 +321,14 @@ class Obstacle {
 
 class Star {
   constructor(speed) {
-    this.x = width + 50; 
-    this.y = random(30, height - 30);
-    this.r = 10;
+    this.x = width + random(50, 150); 
+    this.y = random(50, height - 50);
+    this.r = 8;
     this.speed = speed;
   }
   update() { this.x -= this.speed; } 
   display() {
-    fill(255, 255, 0, 150 + sin(frameCount * 0.1) * 100);
+    fill(255, 255, 0);
     noStroke();
     ellipse(this.x, this.y, this.r * 2);
   }
@@ -349,7 +340,7 @@ function touchEnded() { return false; }
 
 function resetGame() {
   distance = 0; currentLevel = 1; shieldHP = 100;
-  obstacles = []; stars = []; gameState = 'START';
+  obstacles = []; stars = []; gameState = 'PLAY'; // 重啟後直接進遊戲
 }
 
 function windowResized() {
