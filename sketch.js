@@ -150,6 +150,17 @@ function drawUI() {
   rect(30, 70, 180, 10);
   fill(shieldHP > 30 ? color(0, 255, 150) : color(255, 50, 50));
   rect(30, 70, map(shieldHP, 0, 100, 0, 180), 10);
+
+  // 🚀 顯示手勢辨識狀態 (讓玩家知道 AI 準備好了沒)
+  textSize(12);
+  noStroke();
+  if (predictions.length > 0) {
+    fill(0, 255, 0);
+    text("✋ 手勢偵測中 (AI Active)", 30, 115);
+  } else {
+    fill(255, 100, 100);
+    text("⌛ 等待手勢或載入模型中...", 30, 115);
+  }
 }
 
 function drawGameOver() {
@@ -170,7 +181,7 @@ function drawGameOver() {
 
 class Player {
   constructor() {
-    this.x = 80;
+    this.x = width - 80; // 🛠️ 修正：讓飛機起始於視覺左側 (flipped 座標系下 x 越大越靠左)
     this.y = height / 2;
     this.history = [];
   }
@@ -207,7 +218,7 @@ class Player {
     for (let i = 0; i < this.history.length; i++) {
       let alpha = map(i, 0, this.history.length, 0, 150);
       stroke(0, 200, 255, alpha);
-      vertex(this.history[i].x - (this.history.length - i) * 8, this.history[i].y);
+      vertex(this.history[i].x + (this.history.length - i) * 8, this.history[i].y); // 🛠️ 修正：噴氣尾跡應向右(小x)延伸
     }
     endShape();
 
