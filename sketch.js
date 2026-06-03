@@ -1,11 +1,16 @@
 /**
  * 《星際穿梭：炫彩避障飛機》
- * 操控：滑鼠/觸控 Y 軸
+ * 操控：AI 手勢辨識（食指指尖）/ 滑鼠備用
+ * 
+ * 🚨 提醒：請務必在 index.html 中加入以下標籤以啟用手勢偵測：
+ * <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
  */
 
 let gameState = 'PLAY'; // PLAY, GAMEOVER
 let player;
 let video;
+let handpose;
+let predictions = [];
 let obstacles = [];
 let stars = [];
 let bgLines = [];
@@ -17,6 +22,11 @@ function setup() {
   // 📸 1. 全螢幕畫布與攝影機設定
   createCanvas(windowWidth, windowHeight);
   video = createCapture(VIDEO);
+  video.size(640, 480); // 設定固定解析度以利手勢座標映射
+  
+  // 初始化 Handpose 模型
+  handpose = ml5.handpose(video, modelReady);
+  handpose.on('predict', results => { predictions = results; });
   video.hide(); // 隱藏預設的 HTML video 標籤
 
   player = new Player();
@@ -28,6 +38,10 @@ function setup() {
       speed: 3
     });
   }
+}
+
+function modelReady() {
+  console.log('Handpose 模型載入成功！');
 }
 
 function draw() {
@@ -161,11 +175,22 @@ class Player {
     this.history = [];
   }
   update() {
-    // ✈️ 因為畫布 scale(-1, 1)，所以 mouseX 必須用 width - mouseX 來校正
-    // 此 targetX 是在「鏡像座標系」中的正確位置
-    let targetX = width - mouseX;
+    let targetX, targetY;
+    
+    // 👁️ 優先使用手勢偵測 (Landmark 8 為食指指尖)
+    if (predictions.length > 0) {
+      let tip = predictions[0].landmarks[8];
+      // 將攝影機座標映射到全螢幕畫布，並校正鏡像偏差
+      targetX = map(tip[0], 0, video.width, width, 0);
+      targetY = map(tip[1], 0, video.height, 0, height);
+    } else {
+      // 📱 備用機制：滑鼠或手機觸控
+      targetX = width - mouseX;
+      targetY = mouseY;
+    }
+    
     this.x = lerp(this.x, constrain(targetX, 0, width), 0.2);
-    this.y = lerp(this.y, mouseY, 0.2);
+    this.y = lerp(this.y, constrain(targetY, 0, height), 0.2);
     this.history.push({x: this.x, y: this.y});
     if (this.history.length > 5) this.history.shift();
   }
