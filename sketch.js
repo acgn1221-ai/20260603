@@ -300,23 +300,23 @@ class Obstacle {
     fill(150, 0, 0);
     ellipse(this.x, this.y, this.r * 2);
   }
-  isOffScreen() { return this.x > width + 100; }
+  isOffScreen() { return this.x < -100; } // 修正：物體向左飛，判斷是否離開左側螢幕
 }
 
 class Star {
   constructor(speed) {
-    this.x = -40;
+    this.x = width + 50; // 從螢幕右側外出現
     this.y = random(30, height - 30);
     this.r = 10;
     this.speed = speed;
   }
-  update() { this.x += this.speed; }
+  update() { this.x -= this.speed; } // 向左飛
   display() {
     fill(255, 255, 0, 150 + sin(frameCount * 0.1) * 100);
     noStroke();
     ellipse(this.x, this.y, this.r * 2);
   }
-  isOffScreen() { return this.x > width + 100; }
+  isOffScreen() { return this.x < -100; } // 修正：物體向左飛，判斷是否離開左側螢幕
 }
 
 // 🔒 2. 防止手機網頁預設行為干擾
