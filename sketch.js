@@ -177,14 +177,19 @@ class Player {
   update() {
     let targetX, targetY;
     
-    // 👁️ 優先使用手勢偵測 (Landmark 8 為食指指尖)
-    if (predictions.length > 0) {
+    //  1. 觸控優先：如果偵測到觸控點，優先跟隨手指座標
+    if (touches.length > 0) {
+      targetX = width - touches[0].x;
+      targetY = touches[0].y;
+    } 
+    // 👁️ 2. 手勢次之：如果沒觸控但有偵測到 AI 手勢 (食指指尖)
+    else if (predictions.length > 0) {
       let tip = predictions[0].landmarks[8];
       // 將攝影機座標映射到全螢幕畫布，並校正鏡像偏差
       targetX = map(tip[0], 0, video.width, width, 0);
       targetY = map(tip[1], 0, video.height, 0, height);
     } else {
-      // 📱 備用機制：滑鼠或手機觸控
+      // 🖱️ 3. 滑鼠保底：若無觸控也無手勢，則跟隨滑鼠
       targetX = width - mouseX;
       targetY = mouseY;
     }
@@ -258,9 +263,14 @@ class Star {
 }
 
 function mousePressed() { if (gameState === 'GAMEOVER') resetGame(); }
-function touchStarted() { if (gameState === 'GAMEOVER') resetGame(); return false; }
+
+// 🔒 2. 防止手機網頁預設行為干擾
+function touchStarted() {
+  if (gameState === 'GAMEOVER') resetGame();
+  return false;
+}
 function touchMoved() {
-  // 確保手機瀏覽器不會因為上下滑動而重整網頁
+  // 封鎖手機瀏覽器的滑動干擾 (如：下拉更新)
   return false;
 }
 function resetGame() {
