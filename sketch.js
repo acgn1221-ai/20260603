@@ -1,12 +1,12 @@
 /**
  * 《星際穿梭：炫彩避障飛機》
- * 操控：純手機觸控模式 (Touches Only)
+ * 操控：純手機觸控模式 (純觸控啟動與引導)
  * 
  * 🚨 提醒：請務必在 index.html 中加入以下標籤以啟用手勢偵測：
  * <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
  */
 
-let gameState = 'PLAY'; // PLAY, GAMEOVER
+let gameState = 'START'; // START, PLAY, GAMEOVER
 let player;
 let video;
 let handpose;
@@ -61,7 +61,10 @@ function draw() {
   image(video, width / 2, height / 2, width * 0.6, height * 0.6);
   imageMode(CORNER);
 
-  if (gameState === 'PLAY') {
+  if (gameState === 'START') {
+    drawStartScreen();
+    checkStartTouch();
+  } else if (gameState === 'PLAY') {
     updateGame();
   } else if (gameState === 'GAMEOVER') {
     drawGameOver();
@@ -73,6 +76,31 @@ function draw() {
   scale(-1, 1);
   drawUI(); 
   pop();
+}
+
+// 🎮 新增：起始引導畫面
+function drawStartScreen() {
+  push();
+  translate(width, 0);
+  scale(-1, 1);
+  textAlign(CENTER, CENTER);
+  
+  // 半透明遮罩
+  fill(0, 0, 0, 100);
+  rect(0, 0, width, height);
+  
+  fill(255, 255, 0);
+  textSize(32);
+  text("👇 請用手指觸碰螢幕\n啟動飛機！", width / 2, height / 2 + 100);
+  pop();
+}
+
+// 🔍 檢查是否有第一次觸碰
+function checkStartTouch() {
+  if (touches.length > 0) {
+    player.initPosition(width - touches[0].x, touches[0].y);
+    gameState = 'PLAY';
+  }
 }
 
 function updateGame() {
@@ -184,32 +212,27 @@ function drawGameOver() {
 
 class Player {
   constructor() {
-    this.x = width - 80; // 🛠️ 修正：讓飛機起始於視覺左側 (flipped 座標系下 x 越大越靠左)
+    this.x = width / 2;
     this.y = height / 2;
     this.history = [];
   }
+  // 🚀 當觸控啟動時，強制設定位置
+  initPosition(nx, ny) {
+    this.x = nx;
+    this.y = ny;
+    this.history = []; // 清除舊軌跡避免視覺拉扯
+  }
   update() {
-    let targetX, targetY;
-    let isActive = false;
-
-    // 📱 1. 觸控優先：如果偵測到觸控點，優先跟隨手指座標
+    // 📱 核心更新：完全捨棄滑鼠，只偵測 touches
     if (touches.length > 0) {
-      targetX = width - touches[0].x;
-      targetY = touches[0].y;
-      isActive = true;
-    } 
-    // 👁️ 2. 手勢次之：如果沒觸控但偵測到 AI 手勢 (食指指尖)
-    else if (predictions.length > 0) {
-      let tip = predictions[0].landmarks[8];
-      targetX = map(tip[0], 0, video.width, width, 0);
-      targetY = map(tip[1], 0, video.height, 0, height);
-      isActive = true;
-    }
+      let targetX = width - touches[0].x;
+      let targetY = touches[0].y;
 
-    if (isActive) {
+      // 平滑跟隨
       this.x = lerp(this.x, constrain(targetX, 0, width), 0.2);
       this.y = lerp(this.y, constrain(targetY, 0, height), 0.2);
     }
+    // 若 touches.length === 0，則不更新 this.x / this.y，飛機保持靜止
 
     this.history.push({x: this.x, y: this.y});
     if (this.history.length > 5) this.history.shift();
@@ -277,8 +300,6 @@ class Star {
   isOffScreen() { return this.x > width + 100; }
 }
 
-function mousePressed() { if (gameState === 'GAMEOVER') resetGame(); }
-
 // 🔒 2. 防止手機網頁預設行為干擾
 function touchStarted() {
   if (gameState === 'GAMEOVER') resetGame();
@@ -290,7 +311,7 @@ function touchMoved() {
 }
 function resetGame() {
   distance = 0; currentLevel = 1; shieldHP = 100;
-  obstacles = []; stars = []; gameState = 'PLAY';
+  obstacles = []; stars = []; gameState = 'START';
 }
 
 // 🔄 3. 視窗自適應縮放
