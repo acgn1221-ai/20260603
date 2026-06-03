@@ -1,6 +1,6 @@
 /**
  * 《星際穿梭：炫彩避障飛機》
- * 操控：純手機觸控模式 (純觸控啟動與引導)
+ * 操控：AI 手勢辨識 (食指指尖)
  * 
  * 🚨 提醒：請務必在 index.html 中加入以下標籤以啟用手勢偵測：
  * <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
@@ -10,7 +10,7 @@ let gameState = 'START'; // START, PLAY, GAMEOVER
 let player;
 let video;
 let handpose;
-let predictions = [];
+let predictions = []; // 儲存手勢偵測結果
 let obstacles = [];
 let stars = [];
 let bgLines = [];
@@ -27,9 +27,9 @@ function setup() {
   video = createCapture(VIDEO);
   video.size(640, 480); // 設定固定解析度以利手勢座標映射
   
-  // 初始化 Handpose 模型
-  handpose = ml5.handpose(video, modelReady);
-  handpose.on('predict', results => { predictions = results; });
+  // 👁️ 初始化 Handpose 模型並監聽偵測事件
+  handpose = ml5.handpose(video, () => console.log('AI模型準備就緒'));
+  handpose.on('predict', results => { predictions = results; }); // 將偵測結果存入 predictions 陣列
   video.hide(); // 隱藏預設的 HTML video 標籤
 
   player = new Player();
@@ -41,10 +41,6 @@ function setup() {
       speed: 3
     });
   }
-}
-
-function modelReady() {
-  console.log('Handpose 模型載入成功！');
 }
 
 function draw() {
@@ -60,8 +56,8 @@ function draw() {
   imageMode(CENTER);
   image(video, width / 2, height / 2, width * 0.6, height * 0.6);
   imageMode(CORNER);
-
-  if (gameState === 'START') {
+  
+  if (gameState === 'START') { // 新手引導狀態
     drawStartScreen();
     checkStartTouch();
   } else if (gameState === 'PLAY') {
@@ -82,7 +78,7 @@ function draw() {
 function drawStartScreen() {
   push();
   translate(width, 0);
-  scale(-1, 1);
+  scale(-1, 1); // 反轉文字方向
   textAlign(CENTER, CENTER);
   
   // 半透明遮罩
@@ -90,15 +86,25 @@ function drawStartScreen() {
   rect(0, 0, width, height);
   
   fill(255, 255, 0);
-  textSize(32);
-  text("👇 請用手指觸碰螢幕\n啟動飛機！", width / 2, height / 2 + 100);
+  textSize(28);
+  if (predictions.length > 0) {
+    text("👍 食指已偵測到！\n飛機即將啟動！", width / 2, height / 2 + 100);
+  } else {
+    text("👋 請在鏡頭前舉起手，露出食指\n以啟動飛機！", width / 2, height / 2 + 100);
+  }
   pop();
 }
 
 // 🔍 檢查是否有第一次觸碰
 function checkStartTouch() {
-  if (touches.length > 0) {
-    player.initPosition(width - touches[0].x, touches[0].y);
+  // 👁️ 當 AI 第一次偵測到手時，啟動遊戲
+  if (predictions.length > 0) {
+    let rawX = predictions[0].landmarks[8][0]; // 食指指尖 X 座標
+    let rawY = predictions[0].landmarks[8][1]; // 食指指尖 Y 座標
+    // 修正左右相反問題，並映射到畫布座標
+    let targetX = map(video.width - rawX, 0, video.width, 0, width);
+    let targetY = map(rawY, 0, video.height, 0, height);
+    player.initPosition(targetX, targetY);
     gameState = 'PLAY';
   }
 }
@@ -301,7 +307,7 @@ class Star {
 }
 
 // 🔒 2. 防止手機網頁預設行為干擾
-function touchStarted() {
+function touchStarted() { // 僅用於遊戲結束後重新開始
   if (gameState === 'GAMEOVER') resetGame();
   return false;
 }
