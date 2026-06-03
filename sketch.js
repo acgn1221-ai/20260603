@@ -7,7 +7,7 @@ let gameState = 'START'; // START, PLAY, GAMEOVER
 let player;
 let video;
 let detector;
-let hands = []; // 儲存 MediaPipe 偵測結果
+let hands = []; // 儲存手勢偵測結果
 let isModelReady = false;
 let obstacles = [];
 let stars = [];
@@ -15,6 +15,7 @@ let bgLines = [];
 let distance = 0;
 let currentLevel = 1;
 let shieldHP = 100;
+let gameOverFrame = 0; // 用於重新開始的延遲計時
 
 async function setup() {
   // 📸 1. 全螢幕畫布與攝影機設定
@@ -55,12 +56,11 @@ function draw() {
   // 1. 基本粉紫背景
   background('#e7c6ff');
 
-  // 2. 繪製攝影機影像 (僅在這裡做鏡像處理)
+  // 2. 繪製「照鏡子模式」的攝影機影像 (寬高 60%)
   push();
   translate(width, 0);
   scale(-1, 1);
   imageMode(CENTER);
-  // 雖然 video 只有 320x240，但在這裡會被拉伸顯示，視覺效果依然清晰
   image(video, width / 2, height / 2, width * 0.6, height * 0.6);
   pop();
 
@@ -73,9 +73,10 @@ function draw() {
     updateGame();
   } else if (gameState === 'GAMEOVER') {
     drawGameOver();
+    checkRestart();
   }
 
-  // 4. 繪製 UI 計分板 (座標系統已回歸正常，不需再反轉文字)
+  // 3. 繪製 UI 計分板
   drawUI(); 
 }
 
@@ -91,7 +92,7 @@ function drawStartScreen() {
   if (hands.length > 0) {
     text("👍 食指已偵測到！\n飛機即將啟動！", width / 2, height / 2 + 100);
   } else {
-    text("👋 請在鏡頭前舉起手，露出食指\n以啟動飛機！", width / 2, height / 2 + 100);
+    text("👋 請舉起食指\n啟動飛機！", width / 2, height / 2 + 100);
   }
 }
 
@@ -105,13 +106,21 @@ function checkStartTouch() {
   }
 }
 
+// 🔍 檢查是否重新開始
+function checkRestart() {
+  // 避免在死亡瞬間立即重新啟動，設定 1 秒冷卻
+  if (hands.length > 0 && frameCount > gameOverFrame + 60) {
+    resetGame();
+  }
+}
+
 // 核心：非同步抓取手勢，絕不卡死 draw() 迴圈
 async function getHandTracking() {
   if (!detector || !video.elt || video.elt.readyState < 2) return;
   hands = await detector.estimateHands(video.elt);
 }
 
-// ✈️ 關鍵：座標映射函式
+// ✈️ 關鍵：座標映射函式 (絕對同向操控)
 function getFingertipCoords() {
   if (hands.length > 0) {
     // MediaPipe 使用 keypoints[8] 代表食指指尖
@@ -146,10 +155,14 @@ function updateGame() {
     if (d < 15 + obstacles[i].r) {
       shieldHP -= 25;
       obstacles.splice(i, 1);
-      if (shieldHP <= 0) { shieldHP = 0; gameState = 'GAMEOVER'; }
+      if (shieldHP <= 0) { 
+        shieldHP = 0; 
+        gameState = 'GAMEOVER'; 
+        gameOverFrame = frameCount; 
+      }
       continue;
     }
-    if (obstacles[i].isOffScreen()) obstacles.splice(i, 1);
+    if (obstacles[i].x < -100) obstacles.splice(i, 1);
   }
 
   // 加分道具 (星塵) 處理
@@ -162,7 +175,7 @@ function updateGame() {
       shieldHP = min(shieldHP + 10, 100);
       stars.splice(i, 1);
     }
-    if (stars[i].isOffScreen()) stars.splice(i, 1);
+    if (stars[i].x < -100) stars.splice(i, 1);
   }
 
   distance += 0.5;
@@ -229,7 +242,7 @@ function drawGameOver() {
   text("💥 GAME OVER 💥", width / 2, height / 2);
   fill(255);
   textSize(20);
-  text("點擊畫面重新開始", width / 2, height / 2 + 50);
+  text("舉起食指重新開始", width / 2, height / 2 + 50);
 }
 
 class Player {
@@ -248,9 +261,9 @@ class Player {
     // 👁️ 核心更新：偵測 AI 食指位置
     let coords = getFingertipCoords();
     if (coords) {
-      // 平滑跟隨，係數 0.3 增加黏手感
-      this.x = lerp(this.x, constrain(coords.x, 0, width), 0.3);
-      this.y = lerp(this.y, constrain(coords.y, 0, height), 0.3);
+      // 提高 lerp 係數至 0.4，移動極度絲滑跟手
+      this.x = lerp(this.x, constrain(coords.x, 0, width), 0.4);
+      this.y = lerp(this.y, constrain(coords.y, 0, height), 0.4);
     }
 
     this.history.push({x: this.x, y: this.y});
@@ -300,34 +313,28 @@ class Obstacle {
     fill(150, 0, 0);
     ellipse(this.x, this.y, this.r * 2);
   }
-  isOffScreen() { return this.x < -100; } // 修正：物體向左飛，判斷是否離開左側螢幕
 }
 
 class Star {
   constructor(speed) {
-    this.x = width + 50; // 從螢幕右側外出現
+    this.x = width + 50; // 改為從右側生成
     this.y = random(30, height - 30);
     this.r = 10;
     this.speed = speed;
   }
-  update() { this.x -= this.speed; } // 向左飛
+  update() { this.x -= this.speed; } // 改為向左飛
   display() {
     fill(255, 255, 0, 150 + sin(frameCount * 0.1) * 100);
     noStroke();
     ellipse(this.x, this.y, this.r * 2);
   }
-  isOffScreen() { return this.x < -100; } // 修正：物體向左飛，判斷是否離開左側螢幕
 }
 
 // 🔒 2. 防止手機網頁預設行為干擾
-function touchStarted() { // 僅用於遊戲結束後重新開始
-  if (gameState === 'GAMEOVER') resetGame();
-  return false;
-}
-function touchMoved() {
-  // 封鎖手機瀏覽器的滑動干擾 (如：下拉更新)
-  return false;
-}
+function touchStarted() { return false; }
+function touchMoved() { return false; }
+function touchEnded() { return false; }
+
 function resetGame() {
   distance = 0; currentLevel = 1; shieldHP = 100;
   obstacles = []; stars = []; gameState = 'START';
