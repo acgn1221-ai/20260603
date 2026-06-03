@@ -33,11 +33,15 @@ function setup() {
 function draw() {
   // 🎨 2. 畫布背景與鏡頭置中顯示 (寬高 60%)
   background('#e7c6ff');
-  
+
+  // 🪞 1. 將攝影機畫面進行「水平鏡像反轉」
+  push();
+  translate(width, 0); // 將原點移動到畫布右側
+  scale(-1, 1); // 水平翻轉
   imageMode(CENTER);
   image(video, width / 2, height / 2, width * 0.6, height * 0.6);
+  pop(); // 恢復畫布變換
   imageMode(CORNER); // 改回預設，避免影響其他繪圖
-
   if (gameState === 'PLAY') {
     updateGame();
   } else if (gameState === 'GAMEOVER') {
@@ -162,7 +166,8 @@ class Player {
     this.history = [];
   }
   update() {
-    this.x = lerp(this.x, mouseX, 0.2);
+    // ✈️ 2. 修正飛機的控制座標（同步鏡像）
+    this.x = lerp(this.x, width - mouseX, 0.2); // 飛機X軸跟隨鏡像後的滑鼠X座標
     this.y = lerp(this.y, mouseY, 0.2);
     this.history.push({x: this.x, y: this.y});
     if (this.history.length > 5) this.history.shift();
