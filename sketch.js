@@ -1,6 +1,6 @@
 /**
  * 《星際穿梭：炫彩避障飛機》
- * 操控：AI 手勢辨識 (食指指尖)
+ * 操控：AI 手勢辨識 (食指指尖) - 效能優化版
  * 
  * 🚨 提醒：請務必在 index.html 中加入以下標籤以啟用手勢偵測：
  * <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
@@ -24,8 +24,9 @@ function setup() {
   // 🔒 徹底禁用手機瀏覽器的拉動、重整等原生行為，把所有觸控百分之百還給 p5.js
   canvas.elt.style.touchAction = 'none';
 
+  // ⚡ 效能優化：降低攝影機解析度，大幅提升 AI 偵測 FPS
   video = createCapture(VIDEO);
-  video.size(640, 480); // 設定固定解析度以利手勢座標映射
+  video.size(320, 240); 
   
   // 👁️ 初始化 Handpose 模型並監聽偵測事件
   handpose = ml5.handpose(video, () => console.log('AI模型準備就緒'));
@@ -47,14 +48,15 @@ function draw() {
   // 1. 基本粉紫背景
   background('#e7c6ff');
 
-  // 2. 啟動全畫布水平鏡像翻轉（照鏡子模式）
-  // 這樣攝影機和飛機都會自動進入鏡像狀態，且操控邏輯最統一
+  // 2. 繪製攝影機影像 (僅在這裡做鏡像處理)
+  push();
   translate(width, 0);
   scale(-1, 1);
-
-  // 3. 在正中央繪製攝影機影像 (寬高 60%)
   imageMode(CENTER);
+  // 雖然 video 只有 320x240，但在這裡會被拉伸顯示，視覺效果依然清晰
   image(video, width / 2, height / 2, width * 0.6, height * 0.6);
+  pop();
+
   imageMode(CORNER);
   
   if (gameState === 'START') { // 新手引導狀態
@@ -66,21 +68,13 @@ function draw() {
     drawGameOver();
   }
 
-  // 7. 繪製 UI 計分板 (需要反轉回正常文字方向)
-  push();
-  translate(width, 0);
-  scale(-1, 1);
+  // 4. 繪製 UI 計分板 (座標系統已回歸正常，不需再反轉文字)
   drawUI(); 
-  pop();
 }
 
 // 🎮 新增：起始引導畫面
 function drawStartScreen() {
-  push();
-  translate(width, 0);
-  scale(-1, 1); // 反轉文字方向
   textAlign(CENTER, CENTER);
-  
   // 半透明遮罩
   fill(0, 0, 0, 100);
   rect(0, 0, width, height);
@@ -92,21 +86,30 @@ function drawStartScreen() {
   } else {
     text("👋 請在鏡頭前舉起手，露出食指\n以啟動飛機！", width / 2, height / 2 + 100);
   }
-  pop();
 }
 
 // 🔍 檢查是否有第一次觸碰
 function checkStartTouch() {
   // 👁️ 當 AI 第一次偵測到手時，啟動遊戲
   if (predictions.length > 0) {
-    let rawX = predictions[0].landmarks[8][0]; // 食指指尖 X 座標
-    let rawY = predictions[0].landmarks[8][1]; // 食指指尖 Y 座標
-    // 修正左右相反問題，並映射到畫布座標
-    let targetX = map(video.width - rawX, 0, video.width, 0, width);
-    let targetY = map(rawY, 0, video.height, 0, height);
-    player.initPosition(targetX, targetY);
+    let coords = getFingertipCoords();
+    player.initPosition(coords.x, coords.y);
     gameState = 'PLAY';
   }
+}
+
+// ✈️ 關鍵：絕對同向座標轉換函式
+function getFingertipCoords() {
+  if (predictions.length > 0) {
+    let rawX = predictions[0].landmarks[8][0]; // 食指 X (0~320)
+    let rawY = predictions[0].landmarks[8][1]; // 食指 Y (0~240)
+
+    // 🛠️ 核心公式：用 video.width 減去 rawX 來實現「絕對同向」
+    let targetX = map(video.width - rawX, 0, video.width, 0, width);
+    let targetY = map(rawY, 0, video.height, 0, height);
+    return { x: targetX, y: targetY };
+  }
+  return null;
 }
 
 function updateGame() {
@@ -120,7 +123,7 @@ function updateGame() {
   // 難度與生成
   handleDifficulty();
 
-  // 障礙物 (隕石) 處理：現在由視覺右側 (x=0附近) 飛向視覺左側 (x=width)
+  // 障礙物 (隕石) 處理：由右向左飛
   for (let i = obstacles.length - 1; i >= 0; i--) {
     obstacles[i].update();
     obstacles[i].display();
@@ -157,8 +160,8 @@ function drawRetroGrid() {
   strokeWeight(2);
   for (let lineObj of bgLines) {
     line(0, lineObj.y, width, lineObj.y);
-    lineObj.y -= 2 * currentLevel; 
-    if (lineObj.y < 0) lineObj.y = height;
+    lineObj.y += 2 * currentLevel; // 改為向下滾動增加動感
+    if (lineObj.y > height) lineObj.y = 0;
   }
 }
 
@@ -201,10 +204,7 @@ function drawUI() {
 }
 
 function drawGameOver() {
-  push();
-  translate(width, 0);
-  scale(-1, 1);
-  fill(0, 0, 0, 10);
+  fill(0, 0, 0, 180);
   rect(0, 0, width, height);
   textAlign(CENTER);
   fill(255, 0, 100);
@@ -213,7 +213,6 @@ function drawGameOver() {
   fill(255);
   textSize(20);
   text("點擊畫面重新開始", width / 2, height / 2 + 50);
-  pop();
 }
 
 class Player {
@@ -229,40 +228,37 @@ class Player {
     this.history = []; // 清除舊軌跡避免視覺拉扯
   }
   update() {
-    // 📱 核心更新：完全捨棄滑鼠，只偵測 touches
-    if (touches.length > 0) {
-      let targetX = width - touches[0].x;
-      let targetY = touches[0].y;
-
-      // 平滑跟隨
-      this.x = lerp(this.x, constrain(targetX, 0, width), 0.2);
-      this.y = lerp(this.y, constrain(targetY, 0, height), 0.2);
+    // 👁️ 核心更新：偵測 AI 食指位置
+    let coords = getFingertipCoords();
+    if (coords) {
+      // 平滑跟隨，係數 0.3 增加黏手感
+      this.x = lerp(this.x, constrain(coords.x, 0, width), 0.3);
+      this.y = lerp(this.y, constrain(coords.y, 0, height), 0.3);
     }
-    // 若 touches.length === 0，則不更新 this.x / this.y，飛機保持靜止
 
     this.history.push({x: this.x, y: this.y});
-    if (this.history.length > 5) this.history.shift();
+    if (this.history.length > 6) this.history.shift();
   }
   display() {
-    // 藍色尾跡
+    // 藍色尾跡 (噴向飛機左方)
     noFill();
     strokeWeight(4);
     beginShape();
     for (let i = 0; i < this.history.length; i++) {
       let alpha = map(i, 0, this.history.length, 0, 150);
       stroke(0, 200, 255, alpha);
-      vertex(this.history[i].x + (this.history.length - i) * 8, this.history[i].y); // 🛠️ 修正：噴氣尾跡應向右(小x)延伸
+      vertex(this.history[i].x - (this.history.length - i) * 8, this.history[i].y); 
     }
     endShape();
 
     push();
-    // 讓飛機頭視覺上朝向飛行方向
+    // 讓飛機頭朝向右方 (飛行方向)
     translate(this.x, this.y);
     drawingContext.shadowBlur = 15;
     drawingContext.shadowColor = color(0, 255, 255);
     fill(255);
     noStroke();
-    triangle(15, 0, -12, -12, -12, 12);
+    triangle(18, 0, -10, -10, -10, 10);
     pop();
     drawingContext.shadowBlur = 0;
   }
@@ -270,14 +266,14 @@ class Player {
 
 class Obstacle {
   constructor(speed) {
-    this.x = -40; // 在鏡像座標系下，-40 是視覺上的右側邊緣外
+    this.x = width + 50; // 從螢幕右側外出現
     this.y = random(30, height - 30);
     this.r = (currentLevel >= 2) ? random(15, 35) : 20;
     this.speed = speed;
     this.drift = (currentLevel >= 3) ? random(-1.5, 1.5) : 0;
   }
   update() {
-    this.x += this.speed; // 在鏡像座標系下，增加 X 是由右往左飛
+    this.x -= this.speed; // 向左飛
     this.y += this.drift;
     if (this.y < this.r || this.y > height - this.r) this.drift *= -1;
   }
