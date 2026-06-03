@@ -20,7 +20,10 @@ let shieldHP = 100;
 
 function setup() {
   // 📸 1. 全螢幕畫布與攝影機設定
-  createCanvas(windowWidth, windowHeight);
+  let canvas = createCanvas(windowWidth, windowHeight);
+  // 🔒 徹底禁用手機瀏覽器的拉動、重整等原生行為，把所有觸控百分之百還給 p5.js
+  canvas.elt.style.touchAction = 'none';
+
   video = createCapture(VIDEO);
   video.size(640, 480); // 設定固定解析度以利手勢座標映射
   
@@ -186,13 +189,24 @@ class Player {
     this.history = [];
   }
   update() {
-    // 📱 僅依賴觸控：只有當手指按住螢幕時，飛機才會更新目標位置
-    if (touches.length > 0) {
-      // 換算鏡像全螢幕後的觸控座標
-      let targetX = width - touches[0].x;
-      let targetY = touches[0].y;
+    let targetX, targetY;
+    let isActive = false;
 
-      // 限制飛機不超出螢幕，並平滑跟隨手指
+    // 📱 1. 觸控優先：如果偵測到觸控點，優先跟隨手指座標
+    if (touches.length > 0) {
+      targetX = width - touches[0].x;
+      targetY = touches[0].y;
+      isActive = true;
+    } 
+    // 👁️ 2. 手勢次之：如果沒觸控但偵測到 AI 手勢 (食指指尖)
+    else if (predictions.length > 0) {
+      let tip = predictions[0].landmarks[8];
+      targetX = map(tip[0], 0, video.width, width, 0);
+      targetY = map(tip[1], 0, video.height, 0, height);
+      isActive = true;
+    }
+
+    if (isActive) {
       this.x = lerp(this.x, constrain(targetX, 0, width), 0.2);
       this.y = lerp(this.y, constrain(targetY, 0, height), 0.2);
     }
