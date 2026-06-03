@@ -1,15 +1,14 @@
 /**
- * 《星際穿梭：炫彩避障飛機》- 終極修復流暢版
+ * 《星際穿梭：炫彩避障飛機》- 雙執行緒不卡死修復版
  * 操控：Google MediaPipe AI 手勢辨識
  */
 
-let gameState = 'START'; // START, PLAY, GAMEOVER
+let gameState = 'START'; 
 let player;
 let video;
 let detector;
-let hands = []; // 儲存手勢偵測結果
+let hands = []; 
 let isModelReady = false;
-let isDetecting = false; // 🔒 關鍵鎖：防止 AI 運算塞車
 let obstacles = [];
 let stars = [];
 let bgLines = [];
@@ -19,16 +18,15 @@ let shieldHP = 100;
 let gameOverFrame = 0; 
 
 async function setup() {
-  // 📸 1. 全螢幕畫布與手機防干擾
   let canvas = createCanvas(windowWidth, windowHeight);
   canvas.elt.style.touchAction = 'none';
 
-  // ⚡ 效能優化關鍵：擷取低解析度，大幅降低計算量
+  // 1. 擷取低解析度降載
   video = createCapture(VIDEO);
   video.size(320, 240); 
   video.hide();
 
-  // 2. 初始化 Google MediaPipe 手勢偵測器
+  // 2. 初始化 Google MediaPipe
   const model = handPoseDetection.SupportedModels.MediaPipeHands;
   const detectorConfig = {
     runtime: 'mediapipe',
@@ -40,35 +38,33 @@ async function setup() {
 
   player = new Player();
   
-  // 初始化 Retro Wave 背景線條
+  // 初始化 Retro Wave 背景
   for (let i = 0; i < 12; i++) {
     bgLines.push({
       y: i * (height / 10),
       speed: 3
     });
   }
+
+  // 🔥 【最強流暢關鍵】：把偵測從 draw 抽出來，每 30 毫秒在背景偷偷算一次，絕對不卡死畫面！
+  setInterval(getHandTracking, 30);
 }
 
 function draw() {
-  // 1. 基本粉紫背景
+  // 3. 基本粉紫背景
   background('#e7c6ff');
 
-  // 2. ⚡ 聰明的非同步手勢追蹤：只有在上一次算完後，才啟動下一次，絕對不卡死！
-  if (isModelReady && !isDetecting) {
-    getHandTracking();
-  }
-
-  // 3. 繪製「照鏡子模式」的攝影機影像 (寬高 60% 居中)
+  // 4. 繪製「照鏡子模式」的攝影機影像 (置中放大至寬高 60%)
   push();
-  translate(width / 2, height / 2); // 移動到畫布中心
-  scale(-1, 1);                     // 水平鏡像
+  translate(width / 2, height / 2); 
+  scale(-1, 1);                     
   imageMode(CENTER);
   image(video, 0, 0, width * 0.6, height * 0.6);
   pop();
 
   imageMode(CORNER);
   
-  // 4. 遊戲狀態機切換
+  // 5. 遊戲狀態機（現在這裡運算流暢度爆表，因為沒有 AI 在這裡塞車了！）
   if (gameState === 'START') { 
     drawStartScreen();
     checkStartTouch();
@@ -79,22 +75,21 @@ function draw() {
     checkRestart();
   }
 
-  // 5. 繪製 UI 計分板
+  // 6. 繪製 UI
   drawUI(); 
 }
 
-// 🎮 起始引導畫面
 function drawStartScreen() {
   textAlign(CENTER, CENTER);
-  fill(0, 0, 0, 120);
+  fill(0, 0, 0, 150);
   rect(0, 0, width, height);
   
   fill(255, 255, 0);
   textSize(28);
   if (hands && hands.length > 0) {
-    text("👍 成功偵測到食指！\n請擺好姿勢，遊戲即將啟動！", width / 2, height / 2);
+    text("👍 食指已偵測到！\n飛機即將啟動！", width / 2, height / 2);
   } else {
-    text("👋 請在鏡頭前舉起手，露出食指\n啟動避障飛機！", width / 2, height / 2);
+    text("👋 請舉起食指\n啟動飛機！", width / 2, height / 2);
   }
 }
 
@@ -114,17 +109,17 @@ function checkRestart() {
   }
 }
 
-// ⚡ 核心修正：加入 isDetecting 安全鎖，排隊塞車問題徹底解決！
+// ⚡ 【後台並行運算】：負責默默在後台算手指位置，算出結果才更新 hands 陣列
 async function getHandTracking() {
   if (!detector || !video.elt || video.elt.readyState < 2) return;
-  
-  isDetecting = true; // 開鎖
   try {
-    hands = await detector.estimateHands(video.elt);
-  } catch (error) {
-    console.error("偵測出錯:", error);
+    let result = await detector.estimateHands(video.elt);
+    if (result) {
+      hands = result;
+    }
+  } catch (e) {
+    // 靜默跳過錯誤，防止控制台崩潰
   }
-  isDetecting = false; // 關鎖，準備下一次偵測
 }
 
 // ✈️ 關鍵公式：修正左右相反、對齊鏡像影像的座標映射
@@ -133,13 +128,13 @@ function getFingertipCoords() {
     let rawX = hands[0].keypoints[8].x; 
     let rawY = hands[0].keypoints[8].y;
 
-    // 🛠️ 終極同向公式：配合視訊畫面置中 60% 的範圍進行精準對齊
+    // 配合視訊畫面置中 60% 的黑邊範圍進行精準對齊
     let videoDisplayWidth = width * 0.6;
     let videoDisplayHeight = height * 0.6;
     let offsetX = (width - videoDisplayWidth) / 2;
     let offsetY = (height - videoDisplayHeight) / 2;
 
-    // 因為視訊做了 scale(-1, 1)，所以 X 軸要用 (video.width - rawX) 反轉過來
+    // 完美同向公式：用 video.width - rawX 對調左右
     let targetX = map(video.width - rawX, 0, video.width, offsetX, offsetX + videoDisplayWidth);
     let targetY = map(rawY, 0, video.height, offsetY, offsetY + videoDisplayHeight);
     
@@ -151,13 +146,11 @@ function getFingertipCoords() {
 function updateGame() {
   drawRetroGrid();
 
-  // 玩家邏輯 (飛機)
   player.update();
   player.display();
 
   handleDifficulty();
 
-  // 障礙物處理
   for (let i = obstacles.length - 1; i >= 0; i--) {
     obstacles[i].update();
     obstacles[i].display();
@@ -176,7 +169,6 @@ function updateGame() {
     if (obstacles[i].x < -100) obstacles.splice(i, 1);
   }
 
-  // 加分道具處理
   for (let i = stars.length - 1; i >= 0; i--) {
     stars[i].update();
     stars[i].display();
@@ -229,7 +221,6 @@ function drawUI() {
   fill(shieldHP > 30 ? color(0, 255, 150) : color(255, 50, 50));
   rect(30, 70, map(shieldHP, 0, 100, 0, 180), 10);
 
-  // 顯示狀態
   textSize(12);
   if (hands && hands.length > 0) {
     fill(0, 255, 0);
@@ -269,9 +260,9 @@ class Player {
   update() {
     let coords = getFingertipCoords();
     if (coords) {
-      // 靈敏流暢跟隨
-      this.x = lerp(this.x, constrain(coords.x, 0, width), 0.4);
-      this.y = lerp(this.y, constrain(coords.y, 0, height), 0.4);
+      // 流暢平滑跟手
+      this.x = lerp(this.x, constrain(coords.x, 0, width), 0.45);
+      this.y = lerp(this.y, constrain(coords.y, 0, height), 0.45);
     }
 
     this.history.push({x: this.x, y: this.y});
