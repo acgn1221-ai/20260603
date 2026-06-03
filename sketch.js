@@ -1,16 +1,14 @@
 /**
  * 《星際穿梭：炫彩避障飛機》
- * 操控：AI 手勢辨識 (食指指尖) - 效能優化版
- * 
- * 🚨 提醒：請務必在 index.html 中加入以下標籤以啟用手勢偵測：
- * <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
+ * 操控：Google MediaPipe AI 手勢辨識
  */
 
 let gameState = 'START'; // START, PLAY, GAMEOVER
 let player;
 let video;
-let handpose;
-let predictions = []; // 儲存手勢偵測結果
+let detector;
+let hands = []; // 儲存 MediaPipe 偵測結果
+let isModelReady = false;
 let obstacles = [];
 let stars = [];
 let bgLines = [];
@@ -18,20 +16,26 @@ let distance = 0;
 let currentLevel = 1;
 let shieldHP = 100;
 
-function setup() {
+async function setup() {
   // 📸 1. 全螢幕畫布與攝影機設定
   let canvas = createCanvas(windowWidth, windowHeight);
   // 🔒 徹底禁用手機瀏覽器的拉動、重整等原生行為，把所有觸控百分之百還給 p5.js
   canvas.elt.style.touchAction = 'none';
 
-  // ⚡ 效能優化：降低攝影機解析度，大幅提升 AI 偵測 FPS
+  // 1. 效能優化關鍵：擷取極低解析度 (320x240)，大幅降低運算負擔
   video = createCapture(VIDEO);
   video.size(320, 240); 
-  
-  // 👁️ 初始化 Handpose 模型並監聽偵測事件
-  handpose = ml5.handpose(video, () => console.log('AI模型準備就緒'));
-  handpose.on('predict', results => { predictions = results; }); // 將偵測結果存入 predictions 陣列
-  video.hide(); // 隱藏預設的 HTML video 標籤
+  video.hide();
+
+  // 2. 初始化 Google MediaPipe 手勢偵測器
+  const model = handPoseDetection.SupportedModels.MediaPipeHands;
+  const detectorConfig = {
+    runtime: 'mediapipe',
+    solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands'
+  };
+  detector = await handPoseDetection.createDetector(model, detectorConfig);
+  isModelReady = true;
+  console.log('MediaPipe AI 引擎已啟動');
 
   player = new Player();
   
@@ -45,6 +49,9 @@ function setup() {
 }
 
 function draw() {
+  // 4. 隔空非同步手勢追蹤
+  getHandTracking();
+
   // 1. 基本粉紫背景
   background('#e7c6ff');
 
@@ -81,7 +88,7 @@ function drawStartScreen() {
   
   fill(255, 255, 0);
   textSize(28);
-  if (predictions.length > 0) {
+  if (hands.length > 0) {
     text("👍 食指已偵測到！\n飛機即將啟動！", width / 2, height / 2 + 100);
   } else {
     text("👋 請在鏡頭前舉起手，露出食指\n以啟動飛機！", width / 2, height / 2 + 100);
@@ -91,18 +98,25 @@ function drawStartScreen() {
 // 🔍 檢查是否有第一次觸碰
 function checkStartTouch() {
   // 👁️ 當 AI 第一次偵測到手時，啟動遊戲
-  if (predictions.length > 0) {
+  if (hands.length > 0) {
     let coords = getFingertipCoords();
     player.initPosition(coords.x, coords.y);
     gameState = 'PLAY';
   }
 }
 
-// ✈️ 關鍵：絕對同向座標轉換函式
+// 核心：非同步抓取手勢，絕不卡死 draw() 迴圈
+async function getHandTracking() {
+  if (!detector || !video.elt || video.elt.readyState < 2) return;
+  hands = await detector.estimateHands(video.elt);
+}
+
+// ✈️ 關鍵：座標映射函式
 function getFingertipCoords() {
-  if (predictions.length > 0) {
-    let rawX = predictions[0].landmarks[8][0]; // 食指 X (0~320)
-    let rawY = predictions[0].landmarks[8][1]; // 食指 Y (0~240)
+  if (hands.length > 0) {
+    // MediaPipe 使用 keypoints[8] 代表食指指尖
+    let rawX = hands[0].keypoints[8].x; 
+    let rawY = hands[0].keypoints[8].y;
 
     // 🛠️ 核心公式：用 video.width 減去 rawX 來實現「絕對同向」
     let targetX = map(video.width - rawX, 0, video.width, 0, width);
@@ -194,12 +208,15 @@ function drawUI() {
   // 🚀 顯示手勢辨識狀態 (讓玩家知道 AI 準備好了沒)
   textSize(12);
   noStroke();
-  if (predictions.length > 0) {
+  if (hands.length > 0) {
     fill(0, 255, 0);
     text("✋ 手勢偵測中 (AI Active)", 30, 115);
-  } else {
+  } else if (!isModelReady) {
     fill(255, 100, 100);
-    text("⌛ 等待手勢或載入模型中...", 30, 115);
+    text("⌛ Google AI 引擎載入中...", 30, 115);
+  } else {
+    fill(255, 255, 255);
+    text("👋 請舉手以偵測...", 30, 115);
   }
 }
 
